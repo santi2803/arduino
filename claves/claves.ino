@@ -1,8 +1,9 @@
-#include <Key.h>
-#include <Keypad.h>
+#include <Wire.h>
+
+#include <RTClib.h>
 
 #include <LiquidCrystal.h>
-
+#include <Keypad.h>
 #include <EEPROM.h>
 
 #define TAM 4
@@ -16,10 +17,10 @@ Conection LCD to Arduino
   LCD E to PIN A1
   LCD D4 to PIN A2
   LCD D5 to PIN A3
-  LCD D6 to PIN A4
-  LCD D7 to PIN A5
+  LCD D6 to PIN 12
+  LCD D7 to PIN 13
 */
-LiquidCrystal lcd(A0, A1, A2, A3, A4, A5);
+LiquidCrystal lcd(A0, A1, A2, A3, 12, 13);
 
 /*==========================
  * Configuration keyboard
@@ -47,12 +48,15 @@ Keypad keypad = Keypad(makeKeymap(keys), rowPins, colPins, rows, cols);
 // Global variables
 int digito = 0;
 char password[] = "2020";
+int reporte[8];
 char codigo[4];
-int opc;
-char opcC[] = "1245";
+int opc, contador, dato, posicion;
+char opcC[] = "12345";
+bool isAdmin;
 bool ismenu = false;
 bool pwmenu = false;
 bool opc_member = false;
+short pos_libre;
 bool newpin = false;
 //char currentUser[3]="";
 int pos;
@@ -66,6 +70,8 @@ struct Passwords{
    char pw_JA[4];
 };
 
+RTC_DS1307 rtc;
+
 void setup() {
   // put your setup code here, to run once:
   int eeAdress = 0;
@@ -75,8 +81,12 @@ void setup() {
     "1324"
   };
   EEPROM.put( eeAdress, pws );
-
   Serial.begin(9600);
+  
+  Wire.begin();
+  rtc.begin();
+
+  //rtc.adjust(DateTime(__DATE__, __TIME__));
   lcd.begin(16, 2);
   lcd.setCursor(0,0);
   lcd.print("Bienvenidos");
@@ -98,10 +108,10 @@ void setup() {
   lcd.setCursor(0,1);
   lcd.print(nombre[2]);
   delay(2000);
-
   lcd.clear();
   lcd.setCursor(0,0);
   lcd.print("Ingrese pin");
+
 }
 
 void loop() {
@@ -109,6 +119,32 @@ void loop() {
   teclado();
 }
 
+/*==============================
+ * Reloj
+================================*/
+void reloj() {
+    DateTime now = rtc.now();
+    lcd.clear();
+    lcd.setCursor(0,0);
+    lcd.print("Date: ");
+    lcd.print(now.day(), DEC);
+    lcd.print('/');
+    lcd.print(now.month(), DEC);
+    lcd.print('/');
+    lcd.print(now.year(), DEC);
+    lcd.setCursor(0,1);
+    lcd.print("Hour: ");
+    lcd.print(now.hour(), DEC);
+    lcd.print(':');
+    lcd.print(now.minute(), DEC);
+    lcd.print(':');
+    lcd.print(now.second(), DEC);
+    delay(1000);
+}
+
+/*=========================
+FUNCION DEL TECLADO
+===========================*/
 void teclado() {
   char tecla = keypad.getKey();
   if (tecla != NO_KEY) {
@@ -143,6 +179,61 @@ void teclado() {
     }
  }
 
+  /*=============================
+  LEER y ESCRIBIR MEMORIA EXTERNA
+  ==============================*/
+ void writeEEPROMExt(int deviceaddress, unsigned int eeaddress, byte data) {
+    Wire.beginTransmission(deviceaddress);
+    Wire.write((int)(eeaddress >> 8));      //writes the MSB
+    Wire.write((int)(eeaddress & 0xFF));    //writes the LSB
+    Wire.write(data);
+    Wire.endTransmission();
+  }
+  byte leerEEPROMExterna(int deviceaddress, unsigned int eeaddress ) {
+    byte rdata = 0xFF;
+    Wire.beginTransmission(deviceaddress);
+    Wire.write((int)(eeaddress >> 8));      //writes the MSB
+    Wire.write((int)(eeaddress & 0xFF));    //writes the LSB
+    Wire.endTransmission();
+    Wire.requestFrom(deviceaddress,1);
+    if (Wire.available()) 
+      rdata = Wire.read();
+    return rdata;
+  }
+
+  /*========================
+   * LEER Y CREAR REPORTE
+  ==========================*/
+  void getReportes() {
+    
+  }
+  
+  void crearReporte(char uid) {
+    DateTime now = rtc.now();
+    reporte[0] = contador;
+    reporte[1] = (now.day(), DEC);
+    reporte[2] = (now.month(), DEC);
+    reporte[3] = (now.year(), DEC);
+    reporte[4] = (now.hour(), DEC);
+    reporte[5] = (now.minute(), DEC);
+    reporte[6] = (now.second(), DEC);
+    reporte[7] = uid;
+  }
+
+  void buscar_pos_libre() {
+    posicion = 0x10;
+    pos_libre = false;
+    contador = 0;
+    do {
+      dato = leerEEPROMExterna(0x50, posicion);
+      if (dato == 0xFF) {
+        pos_libre = true;
+      }
+      contador++;
+      posicion = posicion + 8;
+    } while (pos_libre == false || posicion <= 0xF8);
+  }
+
  /*==========================
  FUNCION NUEVO PIN
  ============================*/
@@ -151,17 +242,6 @@ void teclado() {
   lcd.setCursor(0,0);
   lcd.print("Nuevo Pin");
  }
-
- /*===========================
- GUARDAR NUEVO PIN
- =============================*/
- /*
-  void save_new_pin() {
-  if(currentUser[1] == "S" && currentUser[2] == "A") {
-    
-  }
- }
- */
 
  /*==========================
  CONFIRMAR CONTRASEÑA CADA MIEMBRO
@@ -188,6 +268,7 @@ void teclado() {
         codigo[3]="";
         pwmenu=false;
         ismenu=true;
+        isAdmin = true;
         opc_member=true;
         //currentUser="SA"
         delay(2000);
@@ -223,6 +304,7 @@ void teclado() {
           ismenu=true;
           pwmenu=false;
           opc_member=true;
+          isAdmin = false;
           //currentUser="MA"
           delay(2000);
           lcd.clear();
@@ -257,6 +339,7 @@ void teclado() {
             pwmenu=false;
             ismenu=true;
             opc_member=true;
+            isAdmin = false;
             //currentUser="JA"
             delay(2000);
             lcd.clear();
@@ -319,6 +402,11 @@ void teclado() {
   =============================*/
 
   void menu() {
+    for (int i = 0; i<=11; i++) {
+      reloj();
+    }
+    delay(100);
+    lcd.clear();
     lcd.setCursor(0,0);
     lcd.print("Bienvenido al");
     lcd.setCursor(0,1);
@@ -328,7 +416,11 @@ void teclado() {
     lcd.setCursor(0,0);
     lcd.print("1)SA    2)MA");
     lcd.setCursor(0,1);
-    lcd.print("4)JA    5)Salir");
+    lcd.print("3)JA    4)ch h/d");
+    delay(2000);
+    lcd.clear();
+    lcd.setCursor(0,0);
+    lcd.print("5)Salir");
     delay(2000);
 
     lcd.clear();
@@ -348,13 +440,13 @@ void teclado() {
         lcd.clear();
         lcd.setCursor(0,0);
         lcd.print("Pin Santiago");
-     }
+    }
 
-     if (opc == opcC[1]) {
+    if (opc == opcC[1]) {
         lcd.clear();
         lcd.setCursor(0,0);
         lcd.print("Pin Miguel");
-     }
+    }
 
      if (opc == opcC[2]) {
         lcd.clear();
@@ -363,16 +455,20 @@ void teclado() {
      }
 
      if (opc == opcC[3]) {
-         lcd.clear();
-         lcd.setCursor(0,0);
-         lcd.print("Adios");
-         ismenu=false;
-         pwmenu=false;
-         delay(2000);
-         lcd.clear();
-         lcd.setCursor(0,0);
-         lcd.print("Ingrese pin");
-      }
+         // Cambiar fecha y hora
+     }
+
+     if (opc == opcC[5]) {
+        lcd.clear();
+        lcd.setCursor(0,0);
+        lcd.print("Adios");
+        ismenu=false;
+        pwmenu=false;
+        delay(2000);
+        lcd.clear();
+        lcd.setCursor(0,0);
+        lcd.print("Ingrese pin"); 
+     }
   }
 
   /*=====================
@@ -380,10 +476,17 @@ void teclado() {
   =======================*/
   
   void menu_member() {
-    lcd.setCursor(0,0);
-    lcd.print("1).Cambiar PW");
-    lcd.setCursor(0,1);
-    lcd.print("2) Salir");
+    if (isAdmin) {
+      lcd.setCursor(0,0);
+      lcd.print("1).Cambiar PW");
+      lcd.setCursor(0,1);
+      lcd.print("2).RE  3)Salir"); 
+    } else {
+      lcd.setCursor(0,0);
+      lcd.print("1).Cambiar PW");
+      lcd.setCursor(0,1);
+      lcd.print("2).Salir");
+    }
 
     delay(2000);
     lcd.clear();
@@ -393,14 +496,21 @@ void teclado() {
 
 
   void menu_opc_member() {
-     if (opc == opcC[0]) {
+     if (isAdmin) {
+      if (opc == opcC[0]) {
         lcd.clear();
         newpin = true;
         lcd.setCursor(0,0);
         lcd.print("Nuevo Pin");
-     }
+      }
 
-     if (opc == opcC[1]) {
+      if (opc == opcC[1]) {
+        lcd.clear();
+        lcd.setCursor(0,0);
+        lcd.print("1).C RE  2)V RE");
+      }
+
+      if (opc == opcC[2]) {
         lcd.clear();
         lcd.setCursor(0,0);
         lcd.print("Adios");
@@ -408,6 +518,24 @@ void teclado() {
         opc_member = false;
         ismenu = true;
         menu();
+      }
+     } else {
+      if (opc == opcC[0]) {
+        lcd.clear();
+        newpin = true;
+        lcd.setCursor(0,0);
+        lcd.print("Nuevo Pin");
+      }
+
+      if (opc == opcC[1]) {
+        lcd.clear();
+        lcd.setCursor(0,0);
+        lcd.print("Adios");
+        delay(2000);
+        opc_member = false;
+        ismenu = true;
+        menu();
+      }
      }
   }
 
