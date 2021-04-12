@@ -100,6 +100,9 @@ void setup() {
   posicion = 0;
   */
   
+
+  
+  
   
   
   //i2c_eeprom_write_page(eepromAddress, posicion,(byte *)0, sizeof(255));
@@ -169,7 +172,6 @@ FUNCION DEL TECLADO
 ===========================*/
 void teclado() {
   char tecla = keypad.getKey();
-  Serial.print(tecla);
   if (tecla != NO_KEY) {
     if (!ismenu){
       codigo[digito] = tecla; // condigo[0] = "2" condigo[1] = "A"
@@ -229,16 +231,36 @@ void teclado() {
    * LEER Y CREAR REPORTE
   ==========================*/
   void getReportes() {
+    const char* opt[] = {"REPORTE", "Day", "Month", "Year", "Hour", "Minute", "Second", "Id"};
     int add = 0;
+    int opts = 0;
     byte value = EepromRTC.read(add);
     while (value != 0) {
-      Serial.print(value);
+      // Print to lcd
+      lcd.clear();
+      lcd.setCursor(0, 0);
+      lcd.print(opt[opts]);
+      lcd.print(" ");
+      lcd.print(value);
+      delay(1000);
+
+      lcd.clear();
+      // Print to serial
+      Serial.print(opt[opts]);
+      Serial.print(" ");
+      Serial.print((int)value);
+      //Serial.println(" ");
       Serial.print(" ");
       add++;
-      value = EepromRTC.read(add);
+      opts++;
+      value = EepromRTC.read(add);     
+      if (add == 8 || add == 16 || add == 24 || add == 32 || add == 40 || add == 48 || add == 56 || add == 64 || add == 72 || add == 80 || add == 88 || add == 96 || add == 104) {
+        opts = 0;
+      }
     }
     Serial.println(" sa ");
     delay(100);
+    lcd.print("Fin...");
   }
   
   /*
@@ -260,21 +282,15 @@ void teclado() {
     pos_libre = false;
     contador = 0;
     do {
-      Serial.print("Posicion 1: ");
-      Serial.print(posicion);
+      
       dato = EepromRTC.read(posicion);
-      Serial.println("Dat: ");
-      Serial.print(dato);
+      
       if (dato == 0) {
-        Serial.println("Libre");
         pos_libre = true;
+      } else {
+        posicion += 8;      
       }
-      Serial.println("Contador: ");
-      Serial.print(contador);
-      Serial.println("Posicion 2: ");
-      Serial.print(posicion);
       contador++;
-      posicion = posicion + 8;
     } while (pos_libre == false);
   }
 
@@ -287,6 +303,7 @@ void teclado() {
   lcd.print("Nuevo Pin");
  }
 
+
  /*==========================
  CONFIRMAR CONTRASEÑA CADA MIEMBRO
  ============================*/
@@ -297,7 +314,9 @@ void teclado() {
     //eeAddress  += sizeof(float);
     Passwords res;
     EEPROM.get( eeAddress, res );
-    
+    /*================================================
+    Verify pin santiago
+    ==================================================*/
     if(opc == opcC[0]) {
       if (codigo[0] == res.pw_SA[0] && codigo[1] == res.pw_SA[1] && codigo[2] == res.pw_SA[2] && codigo[3] == res.pw_SA[3]) {
         lcd.clear();
@@ -333,7 +352,9 @@ void teclado() {
         lcd.print("Pin Santiago");
       }
     }
-
+     /*================================================
+    Verify pin salamanca
+    ==================================================*/
     if (opc == opcC[1]) {
         if (codigo[0] == res.pw_MA[0] && codigo[1] == res.pw_MA[1] && codigo[2] == res.pw_MA[2] && codigo[3] == res.pw_MA[3]) {
           lcd.clear();
@@ -369,6 +390,9 @@ void teclado() {
           lcd.print("Pin Miguel");
       }
     }
+     /*================================================
+    Verify pin avellaneda
+    ==================================================*/
 
     if (opc == opcC[2]) {
           if (codigo[0] == res.pw_JA[0] && codigo[1] == res.pw_JA[1] && codigo[2] == res.pw_JA[2] && codigo[3] == res.pw_JA[3]) {
@@ -405,7 +429,9 @@ void teclado() {
             lcd.print("Pin Avellaneda");
       }
     }
-
+    /*================================================
+    Verify admin and get reportes
+    ==================================================*/
     if(opc == opcC[4]) {
       if (codigo[0] == res.pw_SA[0] && codigo[1] == res.pw_SA[1] && codigo[2] == res.pw_SA[2] && codigo[3] == res.pw_SA[3]) {
         lcd.clear();
@@ -439,6 +465,10 @@ void teclado() {
         lcd.print("Pin admin");
       }
     }
+    /*===============================
+     * Change hour and date
+    =================================*/
+    
     
   }
   /*========================
@@ -535,6 +565,9 @@ void teclado() {
 
      if (opc == opcC[3]) {
          // Cambiar fecha y hora
+         lcd.clear();
+         lcd.setCursor(0,0);
+         lcd.print("Pin admin");
      }
 
      if (opc == opcC[4]) {
@@ -588,7 +621,7 @@ void teclado() {
           lcd.setCursor(0,0);
           buscar_pos_libre();
           if (pos_libre == true) {
-            Serial.println(posicion);
+            //Serial.println(posicion);
             Serial.println(contador);
             DateTime now = rtc.now();
             reporte[0] = contador;
@@ -601,11 +634,10 @@ void teclado() {
             reporte[7] = uid;
             
             // i2c_eeprom_write_page(posicion,(byte *)reporte, sizeof(reporte));
-            for (int i = 0; i < 8; i++) {
-              
-                      
-              EepromRTC.write(posicion,(byte *)reporte[i]); 
-              
+            for (int i = 0; i < 8; i++) {   
+              EepromRTC.write(posicion,(byte *)reporte[i]);               
+              delay(5);
+              posicion = posicion + 1;
             }
             
             lcd.print("Creando reporte"); 
